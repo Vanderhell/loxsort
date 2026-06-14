@@ -31,7 +31,7 @@ static const lox_bench_pattern_t g_patterns[] = {
     LOX_BENCH_PATTERN_STAGGER,
     LOX_BENCH_PATTERN_PLATEAU,
     LOX_BENCH_PATTERN_SAWTOOTH,
-    LOX_BENCH_PATTERN_SHUFFLED_RUNS,
+    LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4,
     LOX_BENCH_PATTERN_REVERSE_FIRST_HALF,
     LOX_BENCH_PATTERN_REVERSE_SECOND_HALF,
     LOX_BENCH_PATTERN_RANDOM_HALF,
@@ -49,6 +49,8 @@ static const uint32_t g_train_dataset_seeds[] = { 1u, 7u, 13u, 29u };
 static const uint32_t g_validation_dataset_seeds[] = { 101u, 131u, 197u, 263u };
 static const uint32_t g_test_dataset_seeds[] = { 401u, 433u, 467u, 499u };
 static const size_t g_timing_repetitions = 3u;
+static const uint64_t g_min_measure_millis = 2u;
+static const uint64_t g_max_measure_millis = 10u;
 
 const char *lox_bench_pattern_name(lox_bench_pattern_t pattern)
 {
@@ -75,8 +77,8 @@ const char *lox_bench_pattern_name(lox_bench_pattern_t pattern)
         return "plateau";
     case LOX_BENCH_PATTERN_SAWTOOTH:
         return "sawtooth";
-    case LOX_BENCH_PATTERN_SHUFFLED_RUNS:
-        return "shuffled_runs";
+    case LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4:
+        return "descending_blocks_4";
     case LOX_BENCH_PATTERN_REVERSE_FIRST_HALF:
         return "reverse_first_half";
     case LOX_BENCH_PATTERN_REVERSE_SECOND_HALF:
@@ -150,6 +152,14 @@ static int lox_bench_is_sorted(const unsigned char *records, size_t count, size_
     return 1;
 }
 
+static uint64_t lox_bench_ticks_per_second(const lox_clock_tick_source_t *clock)
+{
+    if (clock == NULL || clock->ticks_per_second == 0u) {
+        return 1000000000ull;
+    }
+    return clock->ticks_per_second;
+}
+
 static void lox_bench_run_one(
     FILE *out,
     const lox_algorithm_entry_t *entry,
@@ -166,13 +176,24 @@ static void lox_bench_run_one(
     const lox_clock_tick_source_t *clock = lox_clock_default();
     uint64_t start;
     uint64_t end;
+    uint64_t total_ticks;
     size_t rep;
+    size_t iterations;
     unsigned char scratch[4096];
     lox_status_t status = LOX_STATUS_OK;
     size_t key_size = element_size < sizeof(uint32_t) ? element_size : sizeof(uint32_t);
+    uint64_t ticks_per_second = lox_bench_ticks_per_second(clock);
+    uint64_t min_ticks = (ticks_per_second / 1000u) * g_min_measure_millis;
+    uint64_t max_ticks = (ticks_per_second / 1000u) * g_max_measure_millis;
 
     if (count * element_size > sizeof(work)) {
         return;
+    }
+    if (min_ticks == 0u) {
+        min_ticks = 1u;
+    }
+    if (max_ticks < min_ticks) {
+        max_ticks = min_ticks;
     }
 
     options.scratch = NULL;
@@ -197,17 +218,20 @@ static void lox_bench_run_one(
         options.scratch_size = required;
     }
 
-    memcpy(work, master, count * element_size);
-    entry->sort(work, count, element_size, lox_bench_compare_raw_key, &key_size, &options);
-
     for (rep = 0u; rep < g_timing_repetitions; ++rep) {
-        memcpy(work, master, count * element_size);
-        start = clock->now_ticks();
-        entry->sort(work, count, element_size, lox_bench_compare_raw_key, &key_size, &options);
-        end = clock->now_ticks();
-        status = lox_bench_is_sorted(work, count, element_size, key_size) ? LOX_STATUS_OK : LOX_STATUS_VERIFY_FAILED;
+        total_ticks = 0u;
+        iterations = 0u;
+        do {
+            memcpy(work, master, count * element_size);
+            start = clock->now_ticks();
+            entry->sort(work, count, element_size, lox_bench_compare_raw_key, &key_size, &options);
+            end = clock->now_ticks();
+            total_ticks += (end - start);
+            ++iterations;
+            status = lox_bench_is_sorted(work, count, element_size, key_size) ? LOX_STATUS_OK : LOX_STATUS_VERIFY_FAILED;
+        } while (total_ticks < min_ticks && total_ticks < max_ticks);
         fprintf(out,
-            "%s,%s,%s,%zu,%zu,%u,%u,%u,%u,%u,%u,%u,%u,%zu,%llu,%s\n",
+            "%s,%s,%s,%zu,%zu,%u,%u,%u,%u,%u,%u,%u,%u,%zu,%zu,%llu,%llu,%s\n",
             lox_algorithm_name(entry->id),
             lox_bench_pattern_name(pattern),
             lox_bench_split_name(split),
@@ -222,6 +246,8 @@ static void lox_bench_run_one(
             (unsigned)((features.comparison_sign_mask & 2u) != 0u),
             (unsigned)features.direction_changes,
             rep,
+            iterations,
+            (unsigned long long)total_ticks,
             (unsigned long long)(end - start),
             lox_status_name(status));
     }
@@ -236,7 +262,7 @@ void lox_bench_run_demo(void)
     size_t entry_count;
     const lox_algorithm_entry_t *entries = lox_registry_entries(&entry_count);
 
-    printf("algorithm,pattern,split,count,element_size,dataset_seed,sampled_pair_count,disorder_score,equal_score,equal_pair_count,has_less,has_greater,direction_changes,timing_repetition,elapsed_ticks,correctness\n");
+    printf("algorithm,pattern,split,count,element_size,dataset_seed,sampled_pair_count,disorder_score,equal_score,equal_pair_count,has_less,has_greater,direction_changes,timing_repetition,timing_iterations,elapsed_ticks_total,elapsed_ticks,correctness\n");
 
     for (scenario_index = 0u; scenario_index < sizeof(g_scenarios) / sizeof(g_scenarios[0]); ++scenario_index) {
         const lox_bench_scenario_t *scenario = &g_scenarios[scenario_index];

@@ -58,6 +58,36 @@ lox_profile_validation_result_t lox_validate_profile(const lox_profile_t *profil
         return result;
     }
 
+    if (profile->chaotic_merge_direction_min > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->chaotic_merge_data_bytes_max == 0u) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->chaotic_merge_disorder_min > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->merge_large_mixed_direction_min > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->merge_large_mixed_direction_max > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->merge_large_mixed_disorder_min > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
     if ((profile->algorithm_mask & LOX_ALGORITHM_MASK_INSERTION) == 0u) {
         result.valid = 1u;
         return result;

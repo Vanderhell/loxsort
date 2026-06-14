@@ -131,6 +131,7 @@ endif()
 if(LOXSORT_BUILD_BENCH)
     add_executable(loxsort_bench
         bench/lox_bench_main.c
+        bench/lox_campaign.c
         bench/lox_bench.c
         bench/lox_generators.c
     )

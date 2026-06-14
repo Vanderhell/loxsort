@@ -1,7 +1,6 @@
-#include "lox_bench.h"
+#include "lox_campaign.h"
 
-int main(void)
+int main(int argc, char **argv)
 {
-    lox_bench_run_demo();
-    return 0;
+    return lox_campaign_run_cli(argc, argv);
 }

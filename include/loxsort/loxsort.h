@@ -12,7 +12,7 @@ extern "C" {
 #define LOX_SORT_VERSION_MINOR 1u
 #define LOX_SORT_VERSION_PATCH 0u
 
-#define LOX_PROFILE_FORMAT_VERSION 3u
+#define LOX_PROFILE_FORMAT_VERSION 7u
 #define LOX_PROFILE_MAX_SAMPLE_PAIRS 16u
 
 typedef int (*lox_compare_fn)(const void *lhs, const void *rhs, void *user);
@@ -83,12 +83,28 @@ typedef struct lox_profile_s {
     uint16_t merge_min_count_elem_small;
     uint16_t merge_min_count_elem_medium;
     uint16_t merge_min_count_elem_large;
+    uint16_t merge_min_count;
+    uint16_t merge_min_data_bytes;
 
+    uint16_t chaotic_merge_min_count;
+    uint16_t chaotic_merge_min_data_bytes;
+    uint16_t chaotic_merge_data_bytes_max;
+    uint16_t chaotic_merge_direction_min;
+    uint16_t chaotic_merge_disorder_min;
+
+    uint16_t merge_large_mixed_min_count;
+    uint16_t merge_large_mixed_min_data_bytes;
+    uint16_t merge_large_mixed_direction_min;
+    uint16_t merge_large_mixed_direction_max;
+    uint16_t merge_large_mixed_disorder_min;
+
+    uint8_t duplicate_equal_min;
+    uint8_t duplicate_disorder_min;
+    uint8_t merge_duplicate_equal_min;
+    uint8_t merge_duplicate_disorder_min;
     uint8_t sample_pairs;
     uint8_t near_sorted_disorder_max;
     uint8_t near_sorted_direction_changes_max;
-    uint8_t duplicate_equal_min;
-    uint8_t duplicate_disorder_min;
     uint8_t cycle_equal_score_max;
     uint8_t reserved0;
 } lox_profile_t;

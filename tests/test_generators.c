@@ -298,7 +298,7 @@ void test_generators_suite(void)
         LOX_BENCH_PATTERN_STAGGER,
         LOX_BENCH_PATTERN_PLATEAU,
         LOX_BENCH_PATTERN_SAWTOOTH,
-        LOX_BENCH_PATTERN_SHUFFLED_RUNS,
+        LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4,
         LOX_BENCH_PATTERN_REVERSE_FIRST_HALF,
         LOX_BENCH_PATTERN_REVERSE_SECOND_HALF,
         LOX_BENCH_PATTERN_RANDOM_HALF,
@@ -316,7 +316,7 @@ void test_generators_suite(void)
     for (i = 0u; i < sizeof(deterministic_patterns) / sizeof(deterministic_patterns[0]); ++i) {
         test_expect_deterministic(16u, 8u, 1u + (uint32_t)(i * 17u), deterministic_patterns[i]);
     }
-    test_expect_deterministic(32u, 32u, 123u, LOX_BENCH_PATTERN_SHUFFLED_RUNS);
+    test_expect_deterministic(32u, 32u, 123u, LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4);
     test_expect_deterministic(32u, 16u, 123u, LOX_BENCH_PATTERN_ADVERSARIAL);
 
     TEST_CASE("sorted-and-reverse-shape");
@@ -389,8 +389,8 @@ void test_generators_suite(void)
         REQUIRE(keys[i] == (uint32_t)(i % 7u));
     }
 
-    TEST_CASE("shuffled-runs");
-    test_generate(buffer, 16u, 4u, 1u, LOX_BENCH_PATTERN_SHUFFLED_RUNS);
+    TEST_CASE("descending-blocks-4");
+    test_generate(buffer, 16u, 4u, 1u, LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4);
     test_extract_keys(keys, buffer, 16u, 4u);
     for (i = 0u; i < 16u; ++i) {
         REQUIRE(keys[i] == (uint32_t)((i / 4u) * 4u + (3u - (i % 4u))));

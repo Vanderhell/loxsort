@@ -77,6 +77,74 @@ static int lox_is_duplicate_heavy(const lox_feature_vector_t *features, const lo
     return 1;
 }
 
+static int lox_should_prefer_chaotic_merge(
+    const lox_feature_vector_t *features,
+    const lox_profile_t *profile,
+    size_t count,
+    size_t element_size,
+    int has_scratch)
+{
+    size_t data_bytes = 0u;
+    uint8_t sign_mask = features->comparison_sign_mask;
+
+    if (!has_scratch) {
+        return 0;
+    }
+    if (!lox_checked_multiply_size(count, element_size, &data_bytes)) {
+        return 0;
+    }
+    if (count < profile->chaotic_merge_min_count ||
+        data_bytes < profile->chaotic_merge_min_data_bytes) {
+        return 0;
+    }
+    if (data_bytes > profile->chaotic_merge_data_bytes_max) {
+        return 0;
+    }
+
+    if ((sign_mask & 0x3u) == 0x3u &&
+        features->direction_changes >= profile->chaotic_merge_direction_min &&
+        features->disorder_score >= profile->chaotic_merge_disorder_min) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int lox_should_prefer_large_mixed_merge(
+    const lox_feature_vector_t *features,
+    const lox_profile_t *profile,
+    size_t count,
+    size_t element_size,
+    int has_scratch)
+{
+    size_t data_bytes = 0u;
+    uint8_t sign_mask = features->comparison_sign_mask;
+
+    if (!has_scratch) {
+        return 0;
+    }
+    if (!lox_checked_multiply_size(count, element_size, &data_bytes)) {
+        return 0;
+    }
+    if (count < profile->merge_large_mixed_min_count ||
+        data_bytes < profile->merge_large_mixed_min_data_bytes) {
+        return 0;
+    }
+    if ((sign_mask & 0x3u) != 0x3u) {
+        return 0;
+    }
+    if (features->direction_changes < profile->merge_large_mixed_direction_min) {
+        return 0;
+    }
+    if (features->direction_changes > profile->merge_large_mixed_direction_max) {
+        return 0;
+    }
+    if (features->disorder_score < profile->merge_large_mixed_disorder_min) {
+        return 0;
+    }
+    return 1;
+}
+
 static uint16_t lox_profile_merge_limit(const lox_profile_t *profile, uint8_t element_class)
 {
     switch (element_class) {
@@ -133,6 +201,7 @@ static lox_status_t lox_dispatch_choose_and_sort(
     uint8_t element_class = lox_element_size_class(element_size);
     uint16_t shell_limit = lox_profile_shell_limit(profile, element_class);
     uint16_t merge_limit = lox_profile_merge_limit(profile, element_class);
+    size_t data_bytes = count * element_size;
     const lox_algorithm_entry_t *entry = NULL;
     lox_algorithm_t chosen = LOX_ALGORITHM_NONE;
     lox_decision_reason_t reason = LOX_REASON_PROFILE_GENERAL;
@@ -160,7 +229,9 @@ static lox_status_t lox_dispatch_choose_and_sort(
         if (options->flags & LOX_SORT_REQUIRE_STABLE) {
             if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_MERGE) &&
                 has_scratch &&
-                count >= merge_limit) {
+                count >= merge_limit &&
+                count >= profile->merge_min_count &&
+                data_bytes >= profile->merge_min_data_bytes) {
                 if (count <= profile->stable_insertion_cutoff && nearly_sorted) {
                     chosen = LOX_ALGORITHM_INSERTION;
                     reason = LOX_REASON_STABLE_WITH_SCRATCH;
@@ -196,6 +267,18 @@ static lox_status_t lox_dispatch_choose_and_sort(
             lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_INTRO)) {
             chosen = LOX_ALGORITHM_INTRO;
             reason = LOX_REASON_PROFILE_DIRECTION_RANGE;
+        } else if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_MERGE) &&
+            count >= profile->merge_min_count &&
+            data_bytes >= profile->merge_min_data_bytes &&
+            lox_should_prefer_large_mixed_merge(&features, profile, count, element_size, has_scratch)) {
+            chosen = LOX_ALGORITHM_MERGE;
+            reason = LOX_REASON_PROFILE_MERGE_RANGE;
+        } else if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_MERGE) &&
+            count >= profile->merge_min_count &&
+            data_bytes >= profile->merge_min_data_bytes &&
+            lox_should_prefer_chaotic_merge(&features, profile, count, element_size, has_scratch)) {
+            chosen = LOX_ALGORITHM_MERGE;
+            reason = LOX_REASON_PROFILE_MERGE_RANGE;
         } else if ((options->flags & LOX_SORT_NO_RECURSION) != 0u) {
             if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_SHELL) && count <= shell_limit) {
                 chosen = LOX_ALGORITHM_SHELL;
@@ -206,6 +289,8 @@ static lox_status_t lox_dispatch_choose_and_sort(
             }
         } else if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_MERGE) &&
             has_scratch &&
+            count >= profile->merge_min_count &&
+            data_bytes >= profile->merge_min_data_bytes &&
             count >= merge_limit &&
             merge_limit != 0u) {
             chosen = LOX_ALGORITHM_MERGE;

@@ -65,6 +65,23 @@ static void lox_bench_store_record(
     lox_bench_fill_payload(slot, element_size, &payload_state, key ^ index);
 }
 
+static void lox_bench_generate_descending_blocks(
+    uint32_t *keys,
+    size_t count,
+    size_t run_length)
+{
+    size_t i;
+
+    if (run_length == 0u) {
+        run_length = 1u;
+    }
+    for (i = 0u; i < count; ++i) {
+        size_t block = i / run_length;
+        size_t offset = i % run_length;
+        keys[i] = (uint32_t)(block * run_length + (run_length - 1u - offset));
+    }
+}
+
 void lox_bench_generate_bytes(
     unsigned char *records,
     size_t count,
@@ -144,10 +161,8 @@ void lox_bench_generate_bytes(
             keys[i] = (uint32_t)(i % 7u);
         }
         break;
-    case LOX_BENCH_PATTERN_SHUFFLED_RUNS:
-        for (i = 0u; i < count; ++i) {
-            keys[i] = (uint32_t)((i / 4u) * 4u + (3u - (i % 4u)));
-        }
+    case LOX_BENCH_PATTERN_DESCENDING_BLOCKS_4:
+        lox_bench_generate_descending_blocks(keys, count, 4u);
         break;
     case LOX_BENCH_PATTERN_REVERSE_FIRST_HALF:
         for (i = 0u; i < count / 2u; ++i) {

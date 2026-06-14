@@ -36,4 +36,22 @@ void test_profile_suite(void)
     profile.duplicate_intro_max_count = 16u;
     valid = lox_validate_profile(&profile);
     REQUIRE(valid.used_generic_fallback != 0u);
+
+    TEST_CASE("chaotic-merge-direction-fallback");
+    profile = lox_profile_generic;
+    profile.chaotic_merge_direction_min = 32u;
+    valid = lox_validate_profile(&profile);
+    REQUIRE(valid.used_generic_fallback != 0u);
+
+    TEST_CASE("chaotic-merge-bytes-fallback");
+    profile = lox_profile_generic;
+    profile.chaotic_merge_data_bytes_max = 0u;
+    valid = lox_validate_profile(&profile);
+    REQUIRE(valid.used_generic_fallback != 0u);
+
+    TEST_CASE("large-mixed-direction-fallback");
+    profile = lox_profile_generic;
+    profile.merge_large_mixed_direction_max = 32u;
+    valid = lox_validate_profile(&profile);
+    REQUIRE(valid.used_generic_fallback != 0u);
 }

@@ -10,12 +10,18 @@ static uint64_t lox_clock_windows_now(void)
     return (uint64_t)value.QuadPart;
 }
 
-static const lox_clock_tick_source_t g_clock = { lox_clock_windows_now, 0u };
-
 const lox_clock_tick_source_t *lox_clock_default(void)
 {
-    return &g_clock;
+    static lox_clock_tick_source_t clock;
+    static int initialized;
+
+    if (!initialized) {
+        LARGE_INTEGER frequency;
+        clock.now_ticks = lox_clock_windows_now;
+        clock.ticks_per_second = QueryPerformanceFrequency(&frequency) ? (uint64_t)frequency.QuadPart : 1000000ull;
+        initialized = 1;
+    }
+    return &clock;
 }
 
 #endif
-
