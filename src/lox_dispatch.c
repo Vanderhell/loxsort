@@ -9,6 +9,9 @@ static void lox_init_result(lox_sort_result_t *result)
         result->sampled_pair_count = 0u;
         result->disorder_score = 0u;
         result->equal_score = 0u;
+        result->equal_pair_count = 0u;
+        result->direction_changes = 0u;
+        result->comparison_sign_mask = 0u;
     }
 }
 
@@ -53,6 +56,25 @@ static lox_status_t lox_verify_if_requested(
 static int lox_is_nearly_sorted(const lox_feature_vector_t *features, const lox_profile_t *profile)
 {
     return features->disorder_score <= profile->near_sorted_disorder_max;
+}
+
+static int lox_is_duplicate_heavy(const lox_feature_vector_t *features, const lox_profile_t *profile, size_t count)
+{
+    uint8_t sign_mask = features->comparison_sign_mask;
+
+    if (count < profile->duplicate_intro_min_count || count > profile->duplicate_intro_max_count) {
+        return 0;
+    }
+    if (features->equal_pair_count < profile->duplicate_equal_min) {
+        return 0;
+    }
+    if ((sign_mask & 0x3u) != 0x3u) {
+        return 0;
+    }
+    if (features->disorder_score < profile->duplicate_disorder_min) {
+        return 0;
+    }
+    return 1;
 }
 
 static uint16_t lox_profile_merge_limit(const lox_profile_t *profile, uint8_t element_class)
@@ -116,6 +138,7 @@ static lox_status_t lox_dispatch_choose_and_sort(
     lox_decision_reason_t reason = LOX_REASON_PROFILE_GENERAL;
     int needs_features = 1;
     int nearly_sorted = 0;
+    int duplicate_heavy = 0;
     int has_scratch = 0;
 
     effective_mask |= LOX_ALGORITHM_MASK_INSERTION;
@@ -133,6 +156,7 @@ static lox_status_t lox_dispatch_choose_and_sort(
     } else {
         features = lox_extract_features(base, count, element_size, compare, compare_user, profile);
         nearly_sorted = lox_is_nearly_sorted(&features, profile);
+        duplicate_heavy = lox_is_duplicate_heavy(&features, profile, count);
         if (options->flags & LOX_SORT_REQUIRE_STABLE) {
             if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_MERGE) &&
                 has_scratch &&
@@ -154,9 +178,24 @@ static lox_status_t lox_dispatch_choose_and_sort(
             features.equal_score <= profile->cycle_equal_score_max) {
             chosen = LOX_ALGORITHM_CYCLE;
             reason = LOX_REASON_MIN_WRITES;
+        } else if (duplicate_heavy && lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_INTRO)) {
+            chosen = LOX_ALGORITHM_INTRO;
+            reason = LOX_REASON_PROFILE_DUPLICATE_RANGE;
         } else if (nearly_sorted && count <= profile->near_sorted_insertion_max_count) {
-            chosen = LOX_ALGORITHM_INSERTION;
-            reason = LOX_REASON_NEARLY_SORTED;
+            if (features.direction_changes <= profile->near_sorted_direction_changes_max) {
+                chosen = LOX_ALGORITHM_INSERTION;
+                reason = LOX_REASON_NEARLY_SORTED;
+            } else if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_INTRO)) {
+                chosen = LOX_ALGORITHM_INTRO;
+                reason = LOX_REASON_PROFILE_DIRECTION_RANGE;
+            } else {
+                chosen = LOX_ALGORITHM_INSERTION;
+                reason = LOX_REASON_NEARLY_SORTED;
+            }
+        } else if (nearly_sorted && features.direction_changes > profile->near_sorted_direction_changes_max &&
+            lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_INTRO)) {
+            chosen = LOX_ALGORITHM_INTRO;
+            reason = LOX_REASON_PROFILE_DIRECTION_RANGE;
         } else if ((options->flags & LOX_SORT_NO_RECURSION) != 0u) {
             if (lox_algorithm_enabled_by_mask(effective_mask, LOX_ALGORITHM_MASK_SHELL) && count <= shell_limit) {
                 chosen = LOX_ALGORITHM_SHELL;
@@ -195,6 +234,9 @@ static lox_status_t lox_dispatch_choose_and_sort(
         result->sampled_pair_count = needs_features ? features.sampled_pair_count : 0u;
         result->disorder_score = needs_features ? features.disorder_score : 0u;
         result->equal_score = needs_features ? features.equal_score : 0u;
+        result->equal_pair_count = needs_features ? features.equal_pair_count : 0u;
+        result->direction_changes = needs_features ? features.direction_changes : 0u;
+        result->comparison_sign_mask = needs_features ? features.comparison_sign_mask : 0u;
     }
 
     entry = lox_pick_entry(chosen);

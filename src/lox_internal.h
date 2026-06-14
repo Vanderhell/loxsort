@@ -41,6 +41,9 @@ typedef struct lox_feature_vector_s {
     uint8_t disorder_score;
     uint8_t equal_score;
     uint8_t sampled_pair_count;
+    uint8_t equal_pair_count;
+    uint8_t direction_changes;
+    uint8_t comparison_sign_mask;
 } lox_feature_vector_t;
 
 typedef void (*lox_algorithm_fn)(
@@ -175,4 +178,3 @@ static inline uint32_t lox_default_flags(void)
 }
 
 #endif
-

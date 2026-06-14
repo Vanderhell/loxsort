@@ -43,6 +43,21 @@ lox_profile_validation_result_t lox_validate_profile(const lox_profile_t *profil
         return result;
     }
 
+    if (profile->duplicate_intro_min_count > profile->duplicate_intro_max_count) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->duplicate_equal_min > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
+    if (profile->near_sorted_direction_changes_max > LOX_PROFILE_MAX_SAMPLE_PAIRS) {
+        result.valid = 1u;
+        return result;
+    }
+
     if ((profile->algorithm_mask & LOX_ALGORITHM_MASK_INSERTION) == 0u) {
         result.valid = 1u;
         return result;
@@ -106,4 +121,3 @@ const char *lox_status_name(lox_status_t status)
         return "unknown";
     }
 }
-

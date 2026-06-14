@@ -28,12 +28,26 @@ static const lox_bench_pattern_t g_patterns[] = {
     LOX_BENCH_PATTERN_FEW_UNIQUE_8,
     LOX_BENCH_PATTERN_ALL_EQUAL,
     LOX_BENCH_PATTERN_ORGAN_PIPE,
+    LOX_BENCH_PATTERN_STAGGER,
+    LOX_BENCH_PATTERN_PLATEAU,
     LOX_BENCH_PATTERN_SAWTOOTH,
     LOX_BENCH_PATTERN_SHUFFLED_RUNS,
+    LOX_BENCH_PATTERN_REVERSE_FIRST_HALF,
+    LOX_BENCH_PATTERN_REVERSE_SECOND_HALF,
+    LOX_BENCH_PATTERN_RANDOM_HALF,
+    LOX_BENCH_PATTERN_RANDOM_TAIL,
+    LOX_BENCH_PATTERN_PUSH_FRONT,
+    LOX_BENCH_PATTERN_PUSH_MIDDLE,
+    LOX_BENCH_PATTERN_ASCENDING_RUNS,
+    LOX_BENCH_PATTERN_DESCENDING_RUNS,
+    LOX_BENCH_PATTERN_ALTERNATING_HIGH_LOW,
+    LOX_BENCH_PATTERN_BIT_REVERSAL,
     LOX_BENCH_PATTERN_ADVERSARIAL
 };
 
-static const uint32_t g_dataset_seeds[] = { 1u, 7u, 13u, 29u };
+static const uint32_t g_train_dataset_seeds[] = { 1u, 7u, 13u, 29u };
+static const uint32_t g_validation_dataset_seeds[] = { 101u, 131u, 197u, 263u };
+static const uint32_t g_test_dataset_seeds[] = { 401u, 433u, 467u, 499u };
 static const size_t g_timing_repetitions = 3u;
 
 const char *lox_bench_pattern_name(lox_bench_pattern_t pattern)
@@ -55,12 +69,50 @@ const char *lox_bench_pattern_name(lox_bench_pattern_t pattern)
         return "all_equal";
     case LOX_BENCH_PATTERN_ORGAN_PIPE:
         return "organ_pipe";
+    case LOX_BENCH_PATTERN_STAGGER:
+        return "stagger";
+    case LOX_BENCH_PATTERN_PLATEAU:
+        return "plateau";
     case LOX_BENCH_PATTERN_SAWTOOTH:
         return "sawtooth";
     case LOX_BENCH_PATTERN_SHUFFLED_RUNS:
         return "shuffled_runs";
+    case LOX_BENCH_PATTERN_REVERSE_FIRST_HALF:
+        return "reverse_first_half";
+    case LOX_BENCH_PATTERN_REVERSE_SECOND_HALF:
+        return "reverse_second_half";
+    case LOX_BENCH_PATTERN_RANDOM_HALF:
+        return "random_half";
+    case LOX_BENCH_PATTERN_RANDOM_TAIL:
+        return "random_tail";
+    case LOX_BENCH_PATTERN_PUSH_FRONT:
+        return "push_front";
+    case LOX_BENCH_PATTERN_PUSH_MIDDLE:
+        return "push_middle";
+    case LOX_BENCH_PATTERN_ASCENDING_RUNS:
+        return "ascending_runs";
+    case LOX_BENCH_PATTERN_DESCENDING_RUNS:
+        return "descending_runs";
+    case LOX_BENCH_PATTERN_ALTERNATING_HIGH_LOW:
+        return "alternating_high_low";
+    case LOX_BENCH_PATTERN_BIT_REVERSAL:
+        return "bit_reversal";
     case LOX_BENCH_PATTERN_ADVERSARIAL:
         return "adversarial";
+    default:
+        return "unknown";
+    }
+}
+
+const char *lox_bench_split_name(lox_bench_split_t split)
+{
+    switch (split) {
+    case LOX_BENCH_SPLIT_TRAIN:
+        return "train";
+    case LOX_BENCH_SPLIT_VALIDATION:
+        return "validation";
+    case LOX_BENCH_SPLIT_TEST:
+        return "test";
     default:
         return "unknown";
     }
@@ -105,10 +157,12 @@ static void lox_bench_run_one(
     size_t count,
     size_t element_size,
     lox_bench_pattern_t pattern,
+    lox_bench_split_t split,
     uint32_t seed)
 {
     unsigned char work[64 * 32];
     lox_sort_options_t options;
+    lox_feature_vector_t features;
     const lox_clock_tick_source_t *clock = lox_clock_default();
     uint64_t start;
     uint64_t end;
@@ -125,6 +179,14 @@ static void lox_bench_run_one(
     options.scratch_size = 0u;
     options.profile = &lox_profile_generic;
     options.flags = 0u;
+
+    features = lox_extract_features(
+        master,
+        count,
+        element_size,
+        lox_bench_compare_raw_key,
+        &key_size,
+        &lox_profile_generic);
 
     if (entry->id == LOX_ALGORITHM_MERGE) {
         size_t required = lox_merge_scratch_required(count, element_size);
@@ -145,12 +207,20 @@ static void lox_bench_run_one(
         end = clock->now_ticks();
         status = lox_bench_is_sorted(work, count, element_size, key_size) ? LOX_STATUS_OK : LOX_STATUS_VERIFY_FAILED;
         fprintf(out,
-            "%s,%s,%zu,%zu,%u,%zu,%llu,%s\n",
+            "%s,%s,%s,%zu,%zu,%u,%u,%u,%u,%u,%u,%u,%u,%zu,%llu,%s\n",
             lox_algorithm_name(entry->id),
             lox_bench_pattern_name(pattern),
+            lox_bench_split_name(split),
             count,
             element_size,
             seed,
+            (unsigned)features.sampled_pair_count,
+            (unsigned)features.disorder_score,
+            (unsigned)features.equal_score,
+            (unsigned)features.equal_pair_count,
+            (unsigned)((features.comparison_sign_mask & 1u) != 0u),
+            (unsigned)((features.comparison_sign_mask & 2u) != 0u),
+            (unsigned)features.direction_changes,
             rep,
             (unsigned long long)(end - start),
             lox_status_name(status));
@@ -166,7 +236,7 @@ void lox_bench_run_demo(void)
     size_t entry_count;
     const lox_algorithm_entry_t *entries = lox_registry_entries(&entry_count);
 
-    printf("algorithm,pattern,count,element_size,dataset_seed,timing_repetition,elapsed_ticks,correctness\n");
+    printf("algorithm,pattern,split,count,element_size,dataset_seed,sampled_pair_count,disorder_score,equal_score,equal_pair_count,has_less,has_greater,direction_changes,timing_repetition,elapsed_ticks,correctness\n");
 
     for (scenario_index = 0u; scenario_index < sizeof(g_scenarios) / sizeof(g_scenarios[0]); ++scenario_index) {
         const lox_bench_scenario_t *scenario = &g_scenarios[scenario_index];
@@ -174,13 +244,13 @@ void lox_bench_run_demo(void)
             continue;
         }
         for (pattern_index = 0u; pattern_index < sizeof(g_patterns) / sizeof(g_patterns[0]); ++pattern_index) {
-            for (seed_index = 0u; seed_index < sizeof(g_dataset_seeds) / sizeof(g_dataset_seeds[0]); ++seed_index) {
+            for (seed_index = 0u; seed_index < sizeof(g_train_dataset_seeds) / sizeof(g_train_dataset_seeds[0]); ++seed_index) {
                 size_t entry_index;
                 lox_bench_generate_bytes(
                     master,
                     scenario->count,
                     scenario->element_size,
-                    g_dataset_seeds[seed_index],
+                    g_train_dataset_seeds[seed_index],
                     g_patterns[pattern_index]);
                 for (entry_index = 0u; entry_index < entry_count; ++entry_index) {
                     lox_bench_run_one(
@@ -190,10 +260,50 @@ void lox_bench_run_demo(void)
                         scenario->count,
                         scenario->element_size,
                         g_patterns[pattern_index],
-                        g_dataset_seeds[seed_index]);
+                        LOX_BENCH_SPLIT_TRAIN,
+                        g_train_dataset_seeds[seed_index]);
+                }
+            }
+            for (seed_index = 0u; seed_index < sizeof(g_validation_dataset_seeds) / sizeof(g_validation_dataset_seeds[0]); ++seed_index) {
+                size_t entry_index;
+                lox_bench_generate_bytes(
+                    master,
+                    scenario->count,
+                    scenario->element_size,
+                    g_validation_dataset_seeds[seed_index],
+                    g_patterns[pattern_index]);
+                for (entry_index = 0u; entry_index < entry_count; ++entry_index) {
+                    lox_bench_run_one(
+                        stdout,
+                        &entries[entry_index],
+                        master,
+                        scenario->count,
+                        scenario->element_size,
+                        g_patterns[pattern_index],
+                        LOX_BENCH_SPLIT_VALIDATION,
+                        g_validation_dataset_seeds[seed_index]);
+                }
+            }
+            for (seed_index = 0u; seed_index < sizeof(g_test_dataset_seeds) / sizeof(g_test_dataset_seeds[0]); ++seed_index) {
+                size_t entry_index;
+                lox_bench_generate_bytes(
+                    master,
+                    scenario->count,
+                    scenario->element_size,
+                    g_test_dataset_seeds[seed_index],
+                    g_patterns[pattern_index]);
+                for (entry_index = 0u; entry_index < entry_count; ++entry_index) {
+                    lox_bench_run_one(
+                        stdout,
+                        &entries[entry_index],
+                        master,
+                        scenario->count,
+                        scenario->element_size,
+                        g_patterns[pattern_index],
+                        LOX_BENCH_SPLIT_TEST,
+                        g_test_dataset_seeds[seed_index]);
                 }
             }
         }
     }
 }
-

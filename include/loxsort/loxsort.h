@@ -12,7 +12,7 @@ extern "C" {
 #define LOX_SORT_VERSION_MINOR 1u
 #define LOX_SORT_VERSION_PATCH 0u
 
-#define LOX_PROFILE_FORMAT_VERSION 1u
+#define LOX_PROFILE_FORMAT_VERSION 3u
 #define LOX_PROFILE_MAX_SAMPLE_PAIRS 16u
 
 typedef int (*lox_compare_fn)(const void *lhs, const void *rhs, void *user);
@@ -44,6 +44,8 @@ typedef enum lox_decision_reason_e {
     LOX_REASON_NO_RECURSION,
     LOX_REASON_PROFILE_MERGE_RANGE,
     LOX_REASON_PROFILE_SHELL_RANGE,
+    LOX_REASON_PROFILE_DUPLICATE_RANGE,
+    LOX_REASON_PROFILE_DIRECTION_RANGE,
     LOX_REASON_PROFILE_GENERAL,
     LOX_REASON_PROFILE_FALLBACK
 } lox_decision_reason_t;
@@ -68,6 +70,8 @@ typedef struct lox_profile_s {
     uint16_t algorithm_mask;
 
     uint16_t small_count_cutoff;
+    uint16_t duplicate_intro_min_count;
+    uint16_t duplicate_intro_max_count;
     uint16_t stable_insertion_cutoff;
     uint16_t near_sorted_insertion_max_count;
     uint16_t cycle_min_count;
@@ -82,6 +86,9 @@ typedef struct lox_profile_s {
 
     uint8_t sample_pairs;
     uint8_t near_sorted_disorder_max;
+    uint8_t near_sorted_direction_changes_max;
+    uint8_t duplicate_equal_min;
+    uint8_t duplicate_disorder_min;
     uint8_t cycle_equal_score_max;
     uint8_t reserved0;
 } lox_profile_t;
@@ -100,6 +107,9 @@ typedef struct lox_sort_result_s {
     uint8_t sampled_pair_count;
     uint8_t disorder_score;
     uint8_t equal_score;
+    uint8_t equal_pair_count;
+    uint8_t direction_changes;
+    uint8_t comparison_sign_mask;
 } lox_sort_result_t;
 
 extern const lox_profile_t lox_profile_generic;
@@ -123,4 +133,3 @@ const char *lox_status_name(lox_status_t status);
 #endif
 
 #endif
-

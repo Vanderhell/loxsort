@@ -20,6 +20,8 @@ const lox_profile_t lox_profile_generic = {
 #endif
         0u,
     16u,
+    16u,
+    64u,
     32u,
     64u,
     64u,
@@ -29,8 +31,11 @@ const lox_profile_t lox_profile_generic = {
     0u,
     0u,
     0u,
-    4u,
+    16u,
     32u,
+    4u,
+    6u,
+    96u,
     32u,
     0u
 };

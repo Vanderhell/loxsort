@@ -121,12 +121,14 @@ void test_suite_begin(const char *name)
 {
     ++g_suite_count;
     printf("SUITE %s\n", name);
+    fflush(stdout);
 }
 
 void test_case_begin(const char *name)
 {
     ++g_case_count;
     printf("  CASE %s\n", name);
+    fflush(stdout);
 }
 
 size_t test_suite_count(void)

@@ -29,4 +29,11 @@ void test_profile_suite(void)
     profile.algorithm_mask &= (uint16_t)~LOX_ALGORITHM_MASK_INSERTION;
     valid = lox_validate_profile(&profile);
     REQUIRE(valid.used_generic_fallback != 0u);
+
+    TEST_CASE("duplicate-range-fallback");
+    profile = lox_profile_generic;
+    profile.duplicate_intro_min_count = 32u;
+    profile.duplicate_intro_max_count = 16u;
+    valid = lox_validate_profile(&profile);
+    REQUIRE(valid.used_generic_fallback != 0u);
 }
