@@ -36,6 +36,9 @@ BREAKDOWN_FIELDS = [
     ("selected_algorithm", "Selected Algorithm"),
 ]
 
+CANONICAL_TIME_FIELD = "selected_sort_ns"
+PUBLIC_API_TIME_FIELD = "public_api_total_ns"
+
 
 def _safe_float(text: str) -> float:
     value = text.strip()
@@ -49,6 +52,13 @@ def _safe_int(text: str) -> int:
     if not value or value.upper() == "NA":
         return 0
     return int(value)
+
+
+def _optional_float(text: str) -> float:
+    value = text.strip()
+    if not value or value.upper() == "NA":
+        return float("nan")
+    return float(value)
 
 
 def _fmt_ns(value: float) -> str:
@@ -203,12 +213,36 @@ def _numeric_rows(rows: list[dict[str, str]], field: str) -> list[float]:
     return values
 
 
+def _canonical_time(row: dict[str, str]) -> float | None:
+    value = _optional_float(row[CANONICAL_TIME_FIELD])
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
+    return value
+
+
+def _public_api_time(row: dict[str, str]) -> float | None:
+    value = _optional_float(row[PUBLIC_API_TIME_FIELD])
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
+    return value
+
+
 def _strategy_summary(
     rows: list[dict[str, str]],
     dispatcher_by_dataset: dict[str, dict[str, str]],
 ) -> dict[str, str]:
-    times = [_safe_float(row["median_ns"]) for row in rows]
-    valid_times = [value for value in times if value == value]
+    # Strategy comparison uses one canonical metric everywhere:
+    # selected-algorithm sort time. Dispatcher public-API totals are reported separately.
+    valid_rows = []
+    valid_times = []
+    for row in rows:
+        if row["selected_algorithm"].strip() == "none":
+            continue
+        time_value = _canonical_time(row)
+        if time_value is None:
+            continue
+        valid_rows.append(row)
+        valid_times.append(time_value)
     summary = {
         "total_time": _fmt_ns(sum(valid_times)) if valid_times else "NA",
         "mean_time": _fmt_ns(statistics.mean(valid_times)) if valid_times else "NA",
@@ -216,18 +250,18 @@ def _strategy_summary(
         "p95_time": _fmt_ns(_p95(valid_times)) if valid_times else "NA",
         "p99_time": _fmt_ns(_p99(valid_times)) if valid_times else "NA",
         "max_time": _fmt_ns(max(valid_times)) if valid_times else "NA",
-        "wins": str(sum(1 for row in rows if row["selected_algorithm"].strip() == row["best_algorithm"].strip() and row["algorithm"].strip() != "oracle_best")),
-        "losses": str(sum(1 for row in rows if row["selected_algorithm"].strip() != row["best_algorithm"].strip() and row["algorithm"].strip() != "oracle_best")),
-        "ties": str(sum(1 for row in rows if _safe_float(row["regret"]) == 1.0 and row["algorithm"].strip() != "oracle_best")),
+        "wins": str(sum(1 for row in valid_rows if row["selected_algorithm"].strip() == row["best_algorithm"].strip() and row["algorithm"].strip() != "oracle_best")),
+        "losses": str(sum(1 for row in valid_rows if row["selected_algorithm"].strip() != row["best_algorithm"].strip() and row["algorithm"].strip() != "oracle_best")),
+        "ties": str(sum(1 for row in valid_rows if _safe_float(row["regret"]) == 1.0 and row["algorithm"].strip() != "oracle_best")),
     }
     speedup_samples = []
-    for row in rows:
+    for row in valid_rows:
         dispatcher_row = dispatcher_by_dataset.get(row["dataset_id"].strip())
         if dispatcher_row is None:
             continue
-        dispatcher_time = _safe_float(dispatcher_row["median_ns"])
-        strategy_time = _safe_float(row["median_ns"])
-        if dispatcher_time > 0.0 and strategy_time > 0.0 and dispatcher_time == dispatcher_time and strategy_time == strategy_time:
+        dispatcher_time = _canonical_time(dispatcher_row)
+        strategy_time = _canonical_time(row)
+        if dispatcher_time is not None and strategy_time is not None and dispatcher_time > 0.0 and strategy_time > 0.0:
             speedup_samples.append(dispatcher_time / strategy_time)
     summary["geometric_mean_speedup"] = f"{_geometric_mean(speedup_samples):.3f}x" if speedup_samples else "NA"
     return summary
@@ -257,7 +291,12 @@ def _bucket_rows(rows: list[dict[str, str]], bucket_fn) -> dict[str, list[dict[s
 def _merge_eligible_dataset_ids(rows_by_dataset: dict[str, list[dict[str, str]]]) -> set[str]:
     eligible = set()
     for dataset_id, rows in rows_by_dataset.items():
-        if any(row["scratch_mode"].strip() in {"exact_merge_scratch", "ample_scratch"} for row in rows):
+        dispatcher_rows = [row for row in rows if row["algorithm"].strip() == "loxsort_dispatcher"]
+        dispatcher_valid = False
+        if dispatcher_rows:
+            dispatcher_row = dispatcher_rows[0]
+            dispatcher_valid = dispatcher_row["selected_algorithm"].strip() != "none" and _canonical_time(dispatcher_row) is not None
+        if any(row["scratch_mode"].strip() in {"exact_merge_scratch", "ample_scratch"} for row in rows) and dispatcher_valid:
             eligible.add(dataset_id)
     return eligible
 
@@ -267,8 +306,8 @@ def _dataset_time_lookup(rows: list[dict[str, str]], strategy: str) -> dict[str,
     for row in rows:
         if row["algorithm"].strip() != strategy:
             continue
-        value = _safe_float(row["median_ns"])
-        if value == value:
+        value = _canonical_time(row)
+        if value is not None:
             lookup[row["dataset_id"].strip()] = value
     return lookup
 
@@ -366,10 +405,40 @@ def main(argv: list[str]) -> int:
     lines.append("")
     lines.append("## LoxSort Quality")
     lines.append("")
-    regret_values = [_safe_float(row["regret"]) for row in dispatcher_rows if row["regret"].strip()]
-    loss_values = [_safe_float(row["absolute_loss_ns"]) for row in dispatcher_rows if row["absolute_loss_ns"].strip()]
-    overhead_values = [_safe_float(row["dispatcher_overhead_percent"]) for row in dispatcher_rows if row["dispatcher_overhead_percent"].strip()]
+    valid_dispatcher_rows = []
+    selected_algorithm_times = []
+    public_api_times = []
+    dispatcher_overhead_times = []
+    regret_values = []
+    loss_values = []
+    overhead_values = []
+    for row in dispatcher_rows:
+        if row["selected_algorithm"].strip() == "none":
+            continue
+        selected_time = _canonical_time(row)
+        if selected_time is None:
+            continue
+        valid_dispatcher_rows.append(row)
+        selected_algorithm_times.append(selected_time)
+        public_api_time = _public_api_time(row)
+        if public_api_time is not None:
+            public_api_times.append(public_api_time)
+        overhead_time = _safe_float(row["dispatcher_overhead_ns"])
+        if overhead_time == overhead_time:
+            dispatcher_overhead_times.append(overhead_time)
+        regret_value = _safe_float(row["regret"])
+        if regret_value == regret_value:
+            regret_values.append(regret_value)
+        loss_value = _safe_float(row["absolute_loss_ns"])
+        if loss_value == loss_value:
+            loss_values.append(loss_value)
+        overhead_percent = _safe_float(row["dispatcher_overhead_percent"])
+        if overhead_percent == overhead_percent:
+            overhead_values.append(overhead_percent)
     if regret_values:
+        lines.append(f"- selected_algorithm_total: {_fmt_ns(sum(selected_algorithm_times)) if selected_algorithm_times else 'NA'}")
+        lines.append(f"- public_api_total: {_fmt_ns(sum(public_api_times)) if public_api_times else 'NA'}")
+        lines.append(f"- dispatcher_overhead_total: {_fmt_ns(sum(dispatcher_overhead_times)) if dispatcher_overhead_times else 'NA'}")
         lines.append(f"- p50_regret: {_median(regret_values):.3f}")
         lines.append(f"- p95_regret: {_p95(regret_values):.3f}")
         lines.append(f"- p99_regret: {_p99(regret_values):.3f}")
@@ -380,6 +449,9 @@ def main(argv: list[str]) -> int:
         lines.append(f"- dispatcher_overhead_median: {_fmt_ns(_median(overhead_values))}" if overhead_values else "- dispatcher_overhead_median: NA")
         lines.append(f"- dispatcher_overhead_p95: {_fmt_ns(_p95(overhead_values))}" if overhead_values else "- dispatcher_overhead_p95: NA")
     else:
+        lines.append("- selected_algorithm_total: NA")
+        lines.append("- public_api_total: NA")
+        lines.append("- dispatcher_overhead_total: NA")
         lines.append("- p50_regret: NA")
         lines.append("- p95_regret: NA")
         lines.append("- p99_regret: NA")
@@ -404,11 +476,11 @@ def main(argv: list[str]) -> int:
         "always_merge_if_available",
         "oracle_best",
     ]
-    eligible_dispatcher_time = sum(_safe_float(row["median_ns"]) for row in dispatcher_rows if row["dataset_id"].strip() in eligible_dataset_ids and _safe_float(row["median_ns"]) == _safe_float(row["median_ns"]))
+    eligible_dispatcher_time = sum(row_time for row in valid_dispatcher_rows if row["dataset_id"].strip() in eligible_dataset_ids for row_time in [_canonical_time(row)] if row_time is not None)
     for strategy in eligible_strategies:
         subset_rows = [row for row in strategies.get(strategy, []) if row["dataset_id"].strip() in eligible_dataset_ids]
         summary = _strategy_summary(subset_rows, dispatcher_by_dataset)
-        subset_total = sum(_safe_float(row["median_ns"]) for row in subset_rows if _safe_float(row["median_ns"]) == _safe_float(row["median_ns"]))
+        subset_total = sum(row_time for row in subset_rows for row_time in [_canonical_time(row)] if row_time is not None)
         if strategy == "loxsort_dispatcher" or subset_total <= 0.0 or eligible_dispatcher_time <= 0.0:
             speedup = "1.000x" if strategy == "loxsort_dispatcher" else "NA"
         else:
@@ -451,7 +523,7 @@ def main(argv: list[str]) -> int:
     lines.append("| bucket | dataset count | p50 regret | p95 regret | p99 regret | max regret | median absolute loss | total absolute loss |")
     lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     oracle_bucket_groups: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in dispatcher_rows:
+    for row in valid_dispatcher_rows:
         oracle_time = oracle_by_dataset.get(row["dataset_id"].strip(), float("nan"))
         oracle_bucket_groups[_time_bucket(oracle_time)].append(row)
     for bucket in ["< 100 ns", "100 ns to 1 us", "1 us to 10 us", "10 us to 100 us", "100 us to 1 ms", ">= 1 ms"]:
@@ -465,7 +537,7 @@ def main(argv: list[str]) -> int:
     lines.append("")
     lines.append("| bucket | dataset count | p50 regret | p95 regret | p99 regret | max regret | median absolute loss | total absolute loss |")
     lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
-    count_bucket_groups = _bucket_rows(dispatcher_rows, lambda row: _count_bucket(_safe_int(row["count"])))
+    count_bucket_groups = _bucket_rows(valid_dispatcher_rows, lambda row: _count_bucket(_safe_int(row["count"])))
     for bucket in ["0-3", "4-8", "9-32", "33-128", "129-512", "513+"]:
         summary = _summary_bucket(count_bucket_groups.get(bucket, []))
         lines.append(
@@ -486,12 +558,12 @@ def main(argv: list[str]) -> int:
         lines.append("| dataset_id | family | type | pattern | count | element_size | seed | selected algorithm | best algorithm | selected time | best time | regret | absolute loss | runtime features |")
         lines.append("| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | --- |")
         worst = sorted(
-            dispatcher_rows,
+            valid_dispatcher_rows,
             key=lambda row: (_safe_float(row[field]), _safe_float(row["absolute_loss_ns"])),
             reverse=True,
         )[:100]
         for row in worst:
-            selected_time = _safe_float(row["median_ns"])
+            selected_time = _canonical_time(row)
             regret_value = _safe_float(row["regret"])
             best_time = selected_time / regret_value if selected_time == selected_time and regret_value > 0.0 else float("nan")
             features = (

@@ -2220,24 +2220,30 @@ static int lox_campaign_build_plan(
 static void lox_campaign_compute_best_algorithm(
     const lox_campaign_strategy_result_t *results,
     size_t result_count,
+    size_t *best_result_index,
     lox_algorithm_t *best_algorithm,
     double *best_ns)
 {
     size_t i;
+    size_t best_index = SIZE_MAX;
     *best_algorithm = LOX_ALGORITHM_NONE;
     *best_ns = 0.0;
     for (i = 0u; i < result_count; ++i) {
-        double value = results[i].median_ns;
+        double value = results[i].selected_sort_ns;
         if (results[i].strategy == LOX_CAMPAIGN_STRATEGY_ORACLE_BEST) {
             continue;
         }
-        if (results[i].sorted_ok == 0 || results[i].selected_algorithm == LOX_ALGORITHM_NONE || value <= 0.0) {
+        if (results[i].sorted_ok == 0 || results[i].selected_algorithm == LOX_ALGORITHM_NONE || value <= 0.0 || value != value) {
             continue;
         }
         if (*best_algorithm == LOX_ALGORITHM_NONE || value < *best_ns) {
+            best_index = i;
             *best_algorithm = results[i].selected_algorithm;
             *best_ns = value;
         }
+    }
+    if (best_result_index != NULL) {
+        *best_result_index = best_index;
     }
 }
 
@@ -2358,22 +2364,20 @@ static void lox_campaign_measure_dataset(
         }
     }
 
-    lox_campaign_compute_best_algorithm(results, strategy_count, &best_algorithm, &best_ns);
-    oracle_row = results[0];
-    for (i = 0u; i < strategy_count; ++i) {
-        if (results[i].selected_algorithm == best_algorithm && results[i].sorted_ok && results[i].median_ns > 0.0) {
-            oracle_row = results[i];
-            break;
-        }
+    {
+        size_t best_result_index = SIZE_MAX;
+        lox_campaign_compute_best_algorithm(results, strategy_count, &best_result_index, &best_algorithm, &best_ns);
+        oracle_row = (best_result_index == SIZE_MAX) ? results[0] : results[best_result_index];
     }
     oracle_row.strategy = LOX_CAMPAIGN_STRATEGY_ORACLE_BEST;
     oracle_row.selected_algorithm = best_algorithm;
     oracle_row.best_algorithm = best_algorithm;
+    oracle_row.selected_sort_ns = best_ns;
     oracle_row.regret = 1.0;
     oracle_row.absolute_loss_ns = 0.0;
 
     for (i = 0u; i < strategy_count; ++i) {
-        double selected_ns = results[i].median_ns;
+        double selected_ns = results[i].selected_sort_ns;
         results[i].best_algorithm = best_algorithm;
         if (best_ns > 0.0 && results[i].sorted_ok && results[i].selected_algorithm != LOX_ALGORITHM_NONE && selected_ns > 0.0) {
             results[i].regret = selected_ns / best_ns;
