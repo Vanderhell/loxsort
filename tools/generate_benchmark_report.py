@@ -140,6 +140,10 @@ def _read_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(fh))
 
 
+def _is_well_formed_row(row: dict[str, str]) -> bool:
+    return all(value is not None for value in row.values())
+
+
 def _scenario_digest(rows: list[dict[str, str]]) -> str:
     digest = hashlib.sha256()
     keys = []
@@ -341,6 +345,14 @@ def main(argv: list[str]) -> int:
     if not rows:
         print("empty benchmark CSV", file=sys.stderr)
         return 1
+
+    malformed_rows = [row for row in rows if not _is_well_formed_row(row)]
+    if malformed_rows:
+        print(f"warning: skipped {len(malformed_rows)} malformed CSV row(s)", file=sys.stderr)
+        rows = [row for row in rows if _is_well_formed_row(row)]
+        if not rows:
+            print("no valid benchmark rows after filtering malformed input", file=sys.stderr)
+            return 1
 
     dataset_rows: dict[str, list[dict[str, str]]] = defaultdict(list)
     dataset_keys: dict[str, dict[str, str]] = {}

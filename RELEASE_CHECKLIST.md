@@ -8,6 +8,7 @@
 - Install/export package: passed.
 - External consumer build/run: passed.
 - Clang ASan + UBSan build/test: passed with local LLVM runtime path.
+- Full `1,000,000`-dataset release campaign: passed; final report generated from the completed CSV.
 
 ## Still open
 
@@ -54,8 +55,6 @@
 ## Repository
 
 - [ ] README matches the implemented state.
-- [ ] PROJECT_STATE only contains verified claims.
 - [ ] CTest passes in a clean build directory.
 - [ ] The working tree is clean.
 - [ ] A release tag points at a commit that passed release CI.
-

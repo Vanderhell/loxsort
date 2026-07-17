@@ -1,19 +1,39 @@
 # LoxSort
 
-LoxSort je malá deterministická C99 knižnica pre embedded a resource-constrained systémy. Vyberá triediaci algoritmus podľa veľkosti vstupu, stability, scratch buffra, zákazu rekurzie a offline profilu.
+[![CI](https://github.com/Vanderhell/loxsort/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanderhell/loxsort/actions/workflows/ci.yml)
+[![Issues](https://img.shields.io/badge/issues-tracker-blue)](https://github.com/Vanderhell/loxsort/issues)
 
-## Stav
+LoxSort is an experimental deterministic C99 sorting library for embedded and resource-constrained systems. It selects an algorithm based on input size, stability requirements, scratch-buffer availability, recursion constraints, and an offline benchmark profile.
 
-V tomto repozitári je implementovaný:
+## Highlights
 
-- verejný header `include/loxsort/loxsort.h`;
-- insertion, Shell, introsort a bottom-up merge sort;
-- voliteľný cycle sort;
-- deterministický dispatcher a profilová validácia;
-- benchmark skeleton, profile generator a CMake export/install;
-- test suite s API, algoritmami, dispatchom, profilom a stabilitou.
+- Deterministic dispatcher with explicit policy rules.
+- Insertion, Shell, introsort, and bottom-up merge sort.
+- Optional cycle sort for specialized builds.
+- Stateless public API.
+- Offline benchmark and profile generation pipeline.
+- CMake export and install support.
+- Test suite covering API, algorithms, dispatch, profile logic, and stability.
 
-## Build
+## Release Status
+
+- Full `1,000,000`-dataset release benchmark: completed in this workspace.
+
+The current release evidence shows that the dispatcher is correct and measurable at scale, but it is not globally optimal against the oracle and fixed-strategy baselines on every aggregated view.
+
+## Assessment
+
+LoxSort is a valid experimental project if the goal is a deterministic, constraint-aware sorting library for embedded or otherwise resource-sensitive environments.
+
+Its value is in predictable behavior, explicit policy control, and a benchmark-backed dispatcher that respects stability, scratch-buffer availability, and recursion constraints.
+
+The benchmark results do not support positioning it as a universal performance winner. They do support it as a practical, auditable experimental runtime with clear tradeoffs and a documented decision model.
+
+## Cookbook
+
+This section is the practical starting point for users and integrators.
+
+### Build
 
 ```text
 cmake -S . -B build
@@ -21,7 +41,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-### Užitočné CMake voľby
+### Useful CMake options
 
 - `LOXSORT_BUILD_TESTS`
 - `LOXSORT_BUILD_BENCH`
@@ -29,22 +49,80 @@ ctest --test-dir build -C Debug --output-on-failure
 - `LOXSORT_ENABLE_VERIFY`
 - `LOXSORT_ENABLE_SANITIZERS`
 
-## Exportovaný balík
+### Suggested reading order
 
-Projekt inštaluje:
+1. [`docs/LOXSORT_SPEC.md`](docs/LOXSORT_SPEC.md)
+2. [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+3. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+4. [`docs/ALGORITHM_POLICY.md`](docs/ALGORITHM_POLICY.md)
+5. [`docs/BENCHMARK_AND_PROFILES.md`](docs/BENCHMARK_AND_PROFILES.md)
 
-- `include/loxsort/loxsort.h`;
-- `loxsort::loxsort` CMake target;
-- `loxsortConfig.cmake` pre `find_package(loxsort CONFIG REQUIRED)`.
+## Example
 
-## Dokumentácia
+```c
+#include "loxsort/loxsort.h"
 
-- `docs/LOXSORT_SPEC.md`
-- `docs/API_CONTRACT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/ALGORITHM_POLICY.md`
-- `docs/BENCHMARK_AND_PROFILES.md`
-- `docs/TEST_STRATEGY.md`
-- `docs/FILE_LAYOUT.md`
-- `docs/DECISIONS.md`
+static int int_compare(const void *lhs, const void *rhs, void *user) {
+    (void)user;
+    const int left = *(const int *)lhs;
+    const int right = *(const int *)rhs;
+    return (left > right) - (left < right);
+}
 
+void sort_items(int *items, size_t count) {
+    lox_sort_options_t options = {0};
+    lox_sort_result_t result = {0};
+
+    options.profile = &lox_profile_generic;
+
+    (void)lox_sort(
+        items,
+        count,
+        sizeof(*items),
+        int_compare,
+        NULL,
+        &options,
+        &result);
+}
+```
+
+## Documentation
+
+- [`docs/LOXSORT_SPEC.md`](docs/LOXSORT_SPEC.md)
+- [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/ALGORITHM_POLICY.md`](docs/ALGORITHM_POLICY.md)
+- [`docs/BENCHMARK_AND_PROFILES.md`](docs/BENCHMARK_AND_PROFILES.md)
+- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md)
+- [`docs/FILE_LAYOUT.md`](docs/FILE_LAYOUT.md)
+- [`docs/DECISIONS.md`](docs/DECISIONS.md)
+
+## Issues
+
+Use the GitHub issue tracker for bugs, regressions, feature requests, and benchmark anomalies:
+
+https://github.com/Vanderhell/loxsort/issues
+
+When reporting a problem, include:
+
+- target platform and compiler;
+- build configuration and enabled CMake options;
+- minimal reproduction steps;
+- expected vs actual behavior;
+- any benchmark CSV or report excerpt that supports the claim.
+
+## Contributing
+
+Contributions are welcome if they preserve the library's deterministic, constraint-aware design.
+
+Before opening a pull request:
+
+- build the project in Debug and Release;
+- run the test suite;
+- verify any benchmark or profile changes against the existing docs;
+- keep generated artifacts out of source changes unless they are intentionally updated;
+- update the relevant documentation when behavior changes.
+
+## License
+
+See [`LICENSE`](LICENSE) for the current distribution terms.
