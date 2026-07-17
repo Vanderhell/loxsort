@@ -1,7 +1,7 @@
 # LoxSort — Master Specification
 
 **Family:** Liquid Oxygen  
-**Version:** v1.0.0-design  
+**Version:** v1.0.0  
 **Status:** záväzný návrh pred implementáciou  
 **Language:** ISO C99  
 **Target:** embedded a resource-constrained systémy
