@@ -13,7 +13,6 @@
 
 ## Still open
 
-- Fuzz targets are not implemented.
 - GitHub Actions workflow has not been executed on GitHub.
 - `git diff --check` was not run because this workspace is not a git repository.
 
@@ -52,6 +51,7 @@
 - [ ] Profile output includes target identity, toolchain, flags, and algorithms.
 - [ ] Profile generation is deterministic.
 - [ ] Generated profiles pass validation and regret checks.
+- [ ] Fuzz targets are documented and exercised under sanitizer coverage.
 
 ## Repository
 
