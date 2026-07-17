@@ -9,6 +9,7 @@
 - External consumer build/run: passed.
 - Clang ASan + UBSan build/test: passed with local LLVM runtime path.
 - Full `1,000,000`-dataset release campaign: passed; final report generated from the completed CSV.
+- Public documentation refresh: English README, cookbook, API reference, contributing guide, and release notes added.
 
 ## Still open
 

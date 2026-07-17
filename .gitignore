@@ -17,9 +17,6 @@ Testing/
 *.dll
 *.log
 *.tmp
-/prompts
-PROJECT_STATE.md
-run_full1m_verify.bat
 generated/benchmark.checkpoint.json
 generated/full1m_*.csv
 generated/full1m_*.md

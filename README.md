@@ -88,6 +88,10 @@ void sort_items(int *items, size_t count) {
 
 ## Documentation
 
+- [`docs/COOKBOOK.md`](docs/COOKBOOK.md)
+- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)
+- [`docs/RELEASE_NOTES.md`](docs/RELEASE_NOTES.md)
 - [`docs/LOXSORT_SPEC.md`](docs/LOXSORT_SPEC.md)
 - [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
