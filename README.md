@@ -5,6 +5,8 @@
 
 LoxSort is an experimental deterministic C99 sorting library for embedded and resource-constrained systems. It selects an algorithm based on input size, stability requirements, scratch-buffer availability, recursion constraints, and an offline benchmark profile.
 
+LoxSort is part of the Lox family, a set of Liquid Oxygen for Embedded Systems tools and libraries.
+
 ## Highlights
 
 - Deterministic dispatcher with explicit policy rules.
